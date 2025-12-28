@@ -78,16 +78,16 @@ COST_PER_TOKEN_CACHE_WRITE_5M: Final[float] = 1.875e-06
 COST_PER_TOKEN_CACHE_WRITE_1H: Final[float] = 3.0e-06
 
 TEMPERATURE: Final[float] = 1.0
-MAX_OUTPUT_TOKENS_PER_REQUEST: Final[int] = 1024
+MAX_OUTPUT_TOKENS_PER_REQUEST: Final[int] = 4096
 MAX_INPUT_TOKENS_PER_REQUEST: Final[int] = 196608 # not enforced yet
 MAX_REQUESTS_PER_BATCH: Final[int] = 32
 MAX_CHUNKS_PER_THREAD: Final[int] = 96 # not enforced yet
-MESSAGE_BATCH_POLL_INTERVAL: Final[int] = 30
+MESSAGE_BATCH_POLL_INTERVAL: Final[int] = 20
 MAX_BRANCHES_FROM_ROOT: Final[int] = 32
 MAX_BRANCHES_PER_CHUNK: Final[int] = 2
-MAX_END_TURN_COUNT: Final[int] = 2
+# MAX_END_TURN_COUNT: Final[int] = 2 # not enforced yet
 
-MAX_COST_PER_SESSION: Final[float] = 5.00
+MAX_COST_PER_SESSION: Final[float] = 1.80
 
 # INITIAL_CHUNK_PARAMS = [
 #     {
@@ -172,20 +172,16 @@ MAX_COST_PER_SESSION: Final[float] = 5.00
 INITIAL_CHUNK_PARAMS = [
     {
         "role": "system",
-        "text": "# /tmp/greetings.log\nThe assistant is Claude, a helpful, honest, and harmless AI created by Anthropic."
+        "text": "Conversation will be terminated if the Assistant produces an interrupt character (\"\u0003\").",
     },
     {
         "role": "user",
-        "text": "Hi.",
-    },
-    {
-        "role": "assistant",
-        "text": "Hi there! How can I help you today?\n\u0005End File\u0006#",
+        "text": "You're hallucinating.",
     },
 ]
 
 END_TURN_PLACEHOLDER = "\n\nHuman:"
-TERMINATION_COMMAND = "\u0005End File\u0006"
+TERMINATION_COMMAND = "\u0003"
 
 def write_stdout(text: str) -> None:
     print(text, flush=True)
@@ -223,7 +219,7 @@ class Chunk(PydanticBaseModel):
     stop_sequence: Optional[str] = None
     usage: Optional[Usage] = None
     cost: float = 0.0
-    end_turn_count: int = 0
+    # end_turn_count: int = 0
 
 chunks_by_id: Final[dict[str, Chunk]] = dict()
 chunks_by_creation_time: Final[list[Chunk]] = list()
@@ -296,7 +292,7 @@ def update_chunk_from_message_batch_response(response: MessageBatchIndividualRes
         chunk.stop_sequence = message.stop_sequence
         if chunk.stop_reason == "end_turn":
             chunk.text += END_TURN_PLACEHOLDER
-            chunk.end_turn_count = chunks_by_id[chunk.previous_chunk_id].end_turn_count + 1
+            # chunk.end_turn_count = chunks_by_id[chunk.previous_chunk_id].end_turn_count + 1
         elif chunk.stop_reason == "stop_sequence":
             chunk.text += chunk.stop_sequence
         chunk.usage = message.usage
@@ -373,7 +369,7 @@ async def submit_message_batch_and_poll_until_completion(requests: list[MessageB
     new_chunks = []
     async for response in await anthropic.messages.batches.results(batch_id):
         chunk = update_chunk_from_message_batch_response(response)
-        write_stdout(chunk.model_dump_json(indent=2))
+        write_stdout(chunk.model_dump_json())
         new_chunks.append(chunk)
     write_stderr(f"Finished processing message batch [{batch_id}]")
     return new_chunks
@@ -382,7 +378,7 @@ async def main():
     total_cost: float = 0.0
     total_requests: int = 0
 
-    write_stdout("\n".join(chunk.model_dump_json(indent=2) for chunk in chunks_by_creation_time))
+    write_stdout("\n".join(chunk.model_dump_json() for chunk in chunks_by_creation_time))
 
     # To ensure cost-efficient use of the cache, we start by submitting
     # a single message request. When a batch finishes, we generate new
@@ -396,7 +392,7 @@ async def main():
                 chunk.status == "succeeded"
                 and (chunk.stop_reason == "max_tokens" or chunk.stop_reason == "pause_turn" or chunk.stop_reason == "end_turn" or (chunk.stop_reason == "stop_sequence" and chunk.stop_sequence == END_TURN_PLACEHOLDER))
                 and chunk.branch_count < MAX_BRANCHES_PER_CHUNK
-                and chunk.end_turn_count < MAX_END_TURN_COUNT
+                # and chunk.end_turn_count < MAX_END_TURN_COUNT
             )),
             MAX_REQUESTS_PER_BATCH
         ))
