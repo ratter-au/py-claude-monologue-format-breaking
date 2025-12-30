@@ -1,0 +1,45 @@
+body {
+  padding-inline-end: 1rem;
+}
+
+.chunk > header {
+    font-family: monospace;
+}
+
+.chunk > header th {
+  vertical-align: top;
+  text-align: start;
+}
+
+pre {
+  white-space: pre-wrap;
+}
+
+.chunk {
+  padding-block-start: 1lh;
+
+  > header {
+    border-block-start: 1px solid lightgray;
+  }
+
+  > footer {
+    padding-inline-start: 1rem;
+  }
+}
+
+@layer {
+  .chunk:has(> input.chunk-toggle) {
+    > main,
+    > header,
+    > footer {
+      display: none;
+    }
+  }
+  .chunk:has(> input.chunk-toggle:checked) {
+    > main,
+    > header,
+    > footer {
+      display: revert-layer;
+    }
+  }
+}
